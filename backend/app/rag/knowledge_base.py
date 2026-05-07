@@ -6,10 +6,8 @@ Uses ChromaDB for vector storage and sentence-transformers embeddings.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-from pathlib import Path
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
@@ -19,10 +17,7 @@ from app.llm.hf_client import HuggingFaceClient
 
 logger = logging.getLogger(__name__)
 
-# ── Built-in knowledge entries ─────────────────────────────────────────────────
-
 BUILTIN_KNOWLEDGE = [
-    # Security patterns
     {
         "id": "sec-sqli",
         "category": "security",
@@ -76,7 +71,6 @@ BUILTIN_KNOWLEDGE = [
                    "Fix: use environment variables, secrets manager, or config files not in version control.",
         "languages": ["python", "javascript", "java", "go"],
     },
-    # Performance patterns
     {
         "id": "perf-n-plus-1",
         "category": "performance",
@@ -103,7 +97,6 @@ BUILTIN_KNOWLEDGE = [
                    "Fix: use str.join(), StringBuilder, list append + join, or f-strings.",
         "languages": ["python", "javascript", "java"],
     },
-    # Bug patterns
     {
         "id": "bug-mutable-default",
         "category": "bug",
@@ -129,7 +122,6 @@ BUILTIN_KNOWLEDGE = [
                    "Use `==` for value comparison, `is` only for None/True/False/sentinel objects.",
         "languages": ["python"],
     },
-    # Best practices
     {
         "id": "bp-solid",
         "category": "best_practice",
@@ -153,6 +145,56 @@ BUILTIN_KNOWLEDGE = [
 ]
 
 
+def load_rag_docs() -> list[dict]:
+    """Load external markdown RAG documents from data/rag_docs."""
+    rag_dir = os.path.join("data", "rag_docs")
+    entries = []
+
+    if not os.path.exists(rag_dir):
+        return entries
+
+    file_category_map = {
+        "security_rules.md": "security",
+        "performance_rules.md": "performance",
+        "style_rules.md": "style",
+        "bug_patterns.md": "bug",
+    }
+
+    for filename, category in file_category_map.items():
+        path = os.path.join(rag_dir, filename)
+
+        if not os.path.exists(path):
+            continue
+
+        with open(path, "r", encoding="utf-8") as file:
+            content = file.read().strip()
+
+        if not content:
+            continue
+
+        sections = content.split("\n## ")
+
+        for index, section in enumerate(sections):
+            section = section.strip()
+
+            if not section or section.startswith("# "):
+                continue
+
+            lines = section.splitlines()
+            title = lines[0].strip()
+            body = "\n".join(lines[1:]).strip()
+
+            entries.append({
+                "id": f"rag-{category}-{index}",
+                "category": category,
+                "title": title,
+                "content": body,
+                "languages": ["python", "javascript", "java", "typescript"],
+            })
+
+    return entries
+
+
 class KnowledgeBase:
     """Manages the ChromaDB vector store for RAG-enhanced code review."""
 
@@ -160,38 +202,47 @@ class KnowledgeBase:
         self.llm = llm
         persist_dir = settings.chroma_persist_dir
         os.makedirs(persist_dir, exist_ok=True)
+
         self._client = chromadb.Client(ChromaSettings(
             anonymized_telemetry=False,
             is_persistent=True,
             persist_directory=persist_dir,
         ))
+
         self._collection = self._client.get_or_create_collection(
             name="code_review_knowledge",
             metadata={"hnsw:space": "cosine"},
         )
+
         self._initialized = False
 
     async def initialize(self):
-        """Seed the knowledge base with built-in patterns if empty."""
+        """Seed the knowledge base with built-in patterns + external RAG docs if empty."""
         if self._initialized:
             return
+
+        external_knowledge = load_rag_docs()
+        all_knowledge = BUILTIN_KNOWLEDGE + external_knowledge
+
         existing = self._collection.count()
-        if existing >= len(BUILTIN_KNOWLEDGE):
+        if existing >= len(all_knowledge):
             self._initialized = True
             return
 
-        logger.info("Seeding knowledge base with %d entries…", len(BUILTIN_KNOWLEDGE))
-        ids = [entry["id"] for entry in BUILTIN_KNOWLEDGE]
+        logger.info("Seeding knowledge base with %d entries…", len(all_knowledge))
+
+        ids = [entry["id"] for entry in all_knowledge]
+
         documents = [
             f"[{entry['category'].upper()}] {entry['title']}\n{entry['content']}"
-            for entry in BUILTIN_KNOWLEDGE
-        ]
-        metadatas = [
-            {"category": entry["category"], "languages": ",".join(entry["languages"])}
-            for entry in BUILTIN_KNOWLEDGE
+            for entry in all_knowledge
         ]
 
-        # Generate embeddings via sentence-transformers (local, sync)
+        metadatas = [
+            {"category": entry["category"], "languages": ",".join(entry["languages"])}
+            for entry in all_knowledge
+        ]
+
         try:
             embeddings = self.llm.embed(documents)
             self._collection.upsert(
@@ -200,34 +251,47 @@ class KnowledgeBase:
                 embeddings=embeddings,
                 metadatas=metadatas,
             )
-            logger.info("Knowledge base seeded successfully.")
+            logger.info("Knowledge base seeded successfully with external RAG docs.")
         except Exception as exc:
-            logger.warning("Failed to seed knowledge base (embeddings unavailable): %s", exc)
-            # Fallback: store without custom embeddings (ChromaDB will use default)
-            self._collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
+            logger.warning("Failed to seed knowledge base with embeddings: %s", exc)
+            self._collection.upsert(
+                ids=ids,
+                documents=documents,
+                metadatas=metadatas,
+            )
 
         self._initialized = True
 
-    async def add_custom_entry(self, entry_id: str, category: str, title: str,
-                                content: str, languages: list[str]):
+    async def add_custom_entry(
+        self,
+        entry_id: str,
+        category: str,
+        title: str,
+        content: str,
+        languages: list[str],
+    ):
         """Add a custom knowledge entry."""
         doc = f"[{category.upper()}] {title}\n{content}"
+
         try:
             embeddings = self.llm.embed([doc])
             self._collection.upsert(
-                ids=[entry_id], documents=[doc],
+                ids=[entry_id],
+                documents=[doc],
                 embeddings=embeddings,
                 metadatas=[{"category": category, "languages": ",".join(languages)}],
             )
         except Exception:
             self._collection.upsert(
-                ids=[entry_id], documents=[doc],
+                ids=[entry_id],
+                documents=[doc],
                 metadatas=[{"category": category, "languages": ",".join(languages)}],
             )
 
     async def query(self, code_snippet: str, language: str, top_k: int = 5) -> list[str]:
         """Retrieve the most relevant knowledge entries for a code snippet."""
         await self.initialize()
+
         try:
             embeddings = self.llm.embed([code_snippet])
             results = self._collection.query(
@@ -236,7 +300,6 @@ class KnowledgeBase:
                 where={"languages": {"$contains": language}} if language != "unknown" else None,
             )
         except Exception:
-            # Fallback: text-based query
             results = self._collection.query(
                 query_texts=[code_snippet],
                 n_results=top_k,
@@ -254,12 +317,14 @@ class RAGRetriever:
 
     async def retrieve_context(self, code: str, language: str) -> str:
         """Retrieve and format relevant patterns as context string."""
-        # Use first 500 chars of code as query (capturing imports and key patterns)
         snippet = code[:500]
         docs = await self.kb.query(snippet, language, top_k=settings.rag_top_k)
+
         if not docs:
             return ""
+
         sections = []
         for i, doc in enumerate(docs, 1):
             sections.append(f"{i}. {doc}")
+
         return "\n\n".join(sections)

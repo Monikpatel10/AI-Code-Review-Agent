@@ -1,5 +1,5 @@
 # AI Code Review Agent
-
+Built and maintained by Monik Patel
 > **Multi-agent AI-powered code review that integrates directly into VS Code** — using 100% open-source LLMs (local via Ollama or cloud via Hugging Face), with quantified benchmarking to prove accuracy vs human review.
 
 ## Architecture
