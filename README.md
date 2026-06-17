@@ -1,302 +1,343 @@
-# AI Code Review Agent
+# Multi-Agent AI Code Review System
+
 Built and maintained by Monik Patel
-> **Multi-agent AI-powered code review that integrates directly into VS Code** — using 100% open-source LLMs (local via Ollama or cloud via Hugging Face), with quantified benchmarking to prove accuracy vs human review.
+
+> Multi-agent AI-powered code review platform that integrates directly into VS Code using local and cloud-hosted LLMs, Retrieval-Augmented Generation (RAG), semantic code retrieval, and specialized reviewer agents. Built with FastAPI, LangChain, LangGraph, ChromaDB, FAISS, LlamaIndex, AutoGen, Ollama, Hugging Face, OpenAI APIs, and a custom C++ vector retrieval engine.
+
+---
+
+## Overview
+
+The Multi-Agent AI Code Review System automates software quality analysis by combining static analysis, semantic retrieval, and LLM-powered reasoning. The platform coordinates specialized reviewer agents to identify bugs, security vulnerabilities, performance bottlenecks, and maintainability issues while providing grounded recommendations through Retrieval-Augmented Generation (RAG).
+
+The system supports both local inference through Ollama and cloud-hosted LLM services, allowing developers to run reviews in privacy-sensitive environments or leverage larger hosted models.
+
+---
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    VS Code Extension                         │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────────┐  │
-│  │ Commands  │ │Diagnostics│ │Code      │ │ Webview       │  │
-│  │ Palette   │ │ (squiggly │ │Actions   │ │ Dashboard     │  │
-│  │ + Hotkeys │ │  lines)   │ │(QuickFix)│ │ + Charts      │  │
-│  └─────┬─────┘ └─────┬─────┘ └────┬─────┘ └──────┬────────┘  │
-│        └──────────────┴────────────┴───────────────┘          │
-│                          HTTP                                 │
+│                                                             │
+│  Commands • Diagnostics • Quick Fixes • Dashboard          │
 └──────────────────────────┬──────────────────────────────────┘
                            │
-┌──────────────────────────▼──────────────────────────────────┐
-│                   Python Backend (FastAPI)                    │
-│                                                              │
-│  ┌─────────────────── Orchestrator ────────────────────────┐ │
-│  │                                                          │ │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │ │
-│  │  │   Bug    │ │ Security │ │  Perf    │ │  Style   │  │ │
-│  │  │ Detector │ │ Analyzer │ │ Reviewer │ │ Checker  │  │ │
-│  │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘  │ │
-│  │       └─────────────┴────────────┴────────────┘         │ │
-│  │       Consensus + Dedup + Verification                  │ │
-│  └─────────────────────────────────────────────────────────┘ │
-│                                                              │
-│  ┌───────────┐  ┌──────────────┐  ┌────────────────────┐   │
-│  │ AST       │  │ RAG Engine   │  │ Benchmark Suite    │   │
-│  │ Analyzer  │  │ (ChromaDB +  │  │ (Precision/Recall  │   │
-│  │ + Metrics │  │  Embeddings) │  │  F1/Time Savings)  │   │
-│  └───────────┘  └──────────────┘  └────────────────────┘   │
-│                                                              │
-│             Ollama (local) / HuggingFace (cloud)             │
-│          Qwen2.5-Coder / CodeLlama / DeepSeek-Coder         │
-└──────────────────────────────────────────────────────────────┘
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   FastAPI Backend                           │
+│                                                             │
+│               Multi-Agent Orchestrator                      │
+│                                                             │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐      │
+│  │   Bug    │ │ Security │ │  Perf    │ │  Style   │      │
+│  │ Detector │ │ Analyzer │ │ Reviewer │ │ Checker  │      │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘      │
+│                                                             │
+│       Consensus • Deduplication • Ranking                   │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  RAG Retrieval Layer                        │
+│                                                             │
+│  ChromaDB • FAISS • Hugging Face Embeddings                │
+│  LlamaIndex • Semantic Search • Context Retrieval          │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    LLM Providers                            │
+│                                                             │
+│  Ollama • Hugging Face • OpenAI                            │
+│                                                             │
+│  Qwen2.5-Coder • CodeLlama • DeepSeek-Coder                │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+---
 
 ## Key Features
 
 ### Multi-Agent Review System
-- **Bug Detector** — logical errors, null refs, off-by-one, resource leaks
-- **Security Analyzer** — OWASP Top 10, CWE-mapped vulnerabilities
-- **Performance Reviewer** — N+1 queries, O(n²) algorithms, memory leaks
-- **Style Checker** — naming, SOLID violations, code duplication
-- **AST Analyzer** — deterministic rule-based checks (instant, no LLM needed)
-- **Orchestrator** — deduplication, consensus boosting, quality scoring
 
-### Hybrid Analysis Pipeline
-1. **AST-based static analysis** (instant, deterministic)
-2. **Complexity metrics** (cyclomatic, cognitive, maintainability index, Halstead)
-3. **RAG-enhanced prompts** (retrieves relevant vulnerability patterns from knowledge base)
-4. **Multi-agent LLM review** (concurrent, specialized agents)
-5. **Consensus merging** (deduplication + confidence boosting)
+Specialized reviewer agents independently analyze code and collaborate through an orchestration layer.
 
-### Quantified Benchmarking
-- Precision, Recall, F1 Score
-- Severity and category accuracy
-- AI review time vs estimated human review time
-- Time savings percentage
-- Per-category breakdowns
-- Ground-truth annotated test datasets
+#### Bug Detector
+- Logical errors
+- Null reference issues
+- Off-by-one mistakes
+- Resource management problems
 
-### VS Code Integration
-- **Review active file** (`Ctrl+Shift+R`)
-- **Review selection** (`Ctrl+Shift+Alt+R`)
-- **Review git changes** (staged/unstaged diffs)
-- **Inline diagnostics** (squiggly underlines with severity colors)
-- **Quick Fix code actions** (apply suggested fixes with one click)
-- **Rich dashboard** with charts, AI vs Human comparison table
-- **Status bar** with quality score
-- **Auto-review on save** (optional)
-- **Right-click context menu** integration
+#### Security Analyzer
+- OWASP Top 10 vulnerabilities
+- CWE-mapped findings
+- Injection vulnerabilities
+- Hardcoded secrets
 
-## Prerequisites
+#### Performance Reviewer
+- N+1 query detection
+- Algorithmic inefficiencies
+- Memory usage concerns
+- Scalability bottlenecks
 
-1. **Python 3.11+**
-2. **Node.js 18+** and **npm**
-3. **Ollama** (recommended) — [Download here](https://ollama.com)
+#### Style Checker
+- Naming conventions
+- SOLID principles
+- Code duplication
+- Maintainability issues
 
-## Quick Start (5 minutes)
+#### Orchestrator
+- Multi-agent coordination
+- Consensus scoring
+- Finding deduplication
+- Confidence ranking
 
-### 1. Install Ollama and pull a code model
+---
 
-```bash
-# Download Ollama from https://ollama.com then:
-ollama pull qwen2.5-coder:7b
-```
+## Retrieval-Augmented Generation (RAG)
 
-> **Model recommendations:**
-> | Model | RAM needed | Quality | Speed |
-> |---|---|---|---|
-> | `qwen2.5-coder:3b` | ~4 GB | Good | Fast |
-> | `qwen2.5-coder:7b` | ~6 GB | **Great** | **Recommended** |
-> | `qwen2.5-coder:14b` | ~10 GB | Excellent | Slower |
-> | `codellama:7b` | ~6 GB | Good | Fast |
-> | `deepseek-coder-v2:16b` | ~12 GB | Excellent | Slower |
+The review system uses Retrieval-Augmented Generation to ground AI responses in domain-specific knowledge.
 
-### 2. Start the Python Backend
+### Components
 
-```bash
-cd backend
+- ChromaDB vector database
+- FAISS similarity search
+- Hugging Face embedding models
+- Semantic retrieval pipelines
+- Dynamic context injection
 
-# Create virtual environment
-python -m venv venv
-venv\Scripts\activate        # Windows
-# source venv/bin/activate   # macOS/Linux
+### Benefits
 
-# Install dependencies
-pip install -r requirements.txt
+- Reduced hallucinations
+- More consistent findings
+- Repository-aware recommendations
+- Explainable review output
 
-# Start the server (uses Ollama by default)
-python -m uvicorn app.main:app --host 127.0.0.1 --port 19280 --reload
-```
+### Knowledge Sources
 
-The backend auto-detects your Ollama models and picks the best one.
+- Security vulnerability patterns
+- Performance optimization rules
+- Bug detection heuristics
+- Software engineering best practices
+- Style and maintainability guidelines
 
-### 3. Build and Run the VS Code Extension
+---
 
-```bash
-cd extension
+## Agent Orchestration
 
-# Install dependencies
-npm install
+The platform leverages modern agent frameworks to coordinate review workflows.
 
-# Compile TypeScript
-npm run compile
-```
+### LangGraph
 
-To test:
-1. Open the project root in VS Code
-2. Press `F5` to launch the Extension Development Host
-3. Open any code file and press `Ctrl+Shift+R` to review
+Used to orchestrate review workflows and manage execution paths between specialized reviewer agents.
 
-### Alternative: Use HuggingFace Cloud API
+### LangChain
 
-If you don't want to run models locally, you can use HuggingFace's free Inference API:
+Used for prompt construction, retrieval workflows, and LLM integration.
 
-```bash
-# Set environment variables
-set CRA_LLM_PROVIDER=huggingface
-set CRA_HF_TOKEN=hf_your_token_here
+### AutoGen
 
-# Start the server
-python -m uvicorn app.main:app --host 127.0.0.1 --port 19280
-```
+Used to prototype specialized reviewer agents and collaborative review workflows between security, performance, and bug-analysis agents.
 
-**Cloud models used (all free, open-source):**
-- **Primary**: `Qwen/Qwen2.5-Coder-32B-Instruct` — top-tier code model
-- **Fallback**: `bigcode/starcoder2-15b-instruct-v0.1` — fast, reliable
-- **Embeddings**: `all-MiniLM-L6-v2` — always runs locally
+---
 
-### 4. Run a Benchmark (Optional)
+## Repository Understanding
 
-From VS Code: Command Palette → `AI Review: Run Benchmark`
+Repository context is incorporated into reviews using semantic indexing and retrieval.
 
-Or via API:
-```bash
-curl -X POST http://127.0.0.1:19280/api/benchmark \
-  -H "Content-Type: application/json" \
-  -d '{"dataset": "python_bugs"}'
-```
+### LlamaIndex
 
-## Input Sources
+Used for:
 
-The extension supports multiple input sources:
+- Repository indexing
+- Multi-file context retrieval
+- Document abstraction
+- Context-aware repository analysis
 
-| Input Source | How to Use | Best For |
-|---|---|---|
-| **Active File** | `Ctrl+Shift+R` or right-click → "AI Review: Review Current File" | Reviewing a single file you're working on |
-| **Selection** | Select code → `Ctrl+Shift+Alt+R` | Reviewing a specific function or block |
-| **Git Changes** | Command Palette → "AI Review: Review Git Changes" | Pre-commit review of staged/unstaged changes |
-| **Auto on Save** | Enable in settings: `codeReviewAgent.autoReviewOnSave` | Continuous review during development |
+This allows reviewer agents to understand relationships between files instead of evaluating code in isolation.
 
-## Configuration
+---
 
-| Setting | Default | Description |
-|---|---|---|
-| `codeReviewAgent.backendUrl` | `http://127.0.0.1:19280` | Backend server URL |
-| `codeReviewAgent.autoReviewOnSave` | `false` | Auto-review on file save |
-| `codeReviewAgent.agents` | All 4 agents | Which agents to run |
-| `codeReviewAgent.minSeverity` | `info` | Minimum severity to show |
+## Local and Cloud LLM Support
 
-Environment variables for the backend (prefix `CRA_`):
+### Local Models
 
-| Variable | Default | Description |
-|---|---|---|
-| `CRA_HF_TOKEN` | (none) | Hugging Face access token |
-| `CRA_PRIMARY_MODEL` | `Qwen/Qwen2.5-Coder-32B-Instruct` | Primary HF model |
-| `CRA_FALLBACK_MODEL` | `bigcode/starcoder2-15b-instruct-v0.1` | Fallback model |
-| `CRA_TGI_URL` | (none) | Local TGI server URL (for offline use) |
-| `CRA_TEMPERATURE` | `0.1` | LLM temperature |
-| `CRA_CONCURRENT_AGENTS` | `4` | Max concurrent agent runs |
+Powered by Ollama:
 
-## Project Structure
+- Qwen2.5-Coder
+- CodeLlama
+- DeepSeek-Coder
 
-```
-CodeReviewAgent/
-├── backend/                      # Python FastAPI backend
-│   ├── app/
-│   │   ├── main.py               # Server entry point
-│   │   ├── config.py             # Configuration
-│   │   ├── api/
-│   │   │   ├── routes.py         # REST endpoints
-│   │   │   └── schemas.py        # Pydantic models
-│   │   ├── agents/
-│   │   │   ├── base.py           # Base agent class
-│   │   │   ├── orchestrator.py   # Multi-agent coordinator
-│   │   │   ├── bug_detector.py
-│   │   │   ├── security_analyzer.py
-│   │   │   ├── performance_reviewer.py
-│   │   │   └── style_checker.py
-│   │   ├── analysis/
-│   │   │   ├── ast_analyzer.py   # Rule-based AST analysis
-│   │   │   ├── complexity.py     # Cyclomatic/cognitive metrics
-│   │   │   └── diff_parser.py    # Git diff parsing
-│   │   ├── llm/
-│   │   │   ├── hf_client.py      # Hugging Face Inference client
-│   │   │   └── prompts.py        # Agent prompt templates
-│   │   ├── rag/
-│   │   │   └── knowledge_base.py # RAG with ChromaDB
-│   │   └── benchmark/
-│   │       ├── evaluator.py      # Benchmark runner
-│   │       ├── metrics.py        # P/R/F1 calculations
-│   │       └── reporter.py       # Report generation
-│   ├── data/
-│   │   └── benchmark_datasets/   # Annotated test data
-│   └── requirements.txt
-├── extension/                    # VS Code extension (TypeScript)
-│   ├── src/
-│   │   ├── extension.ts          # Extension entry point
-│   │   ├── backendClient.ts      # HTTP client
-│   │   ├── reviewPanel.ts        # Review results webview
-│   │   └── dashboardPanel.ts     # Metrics dashboard webview
-│   ├── package.json              # Extension manifest
-│   └── tsconfig.json
-├── samples/                      # Demo files with intentional issues
-│   ├── python/
-│   │   └── buggy_ecommerce.py
-│   └── javascript/
-│       └── vulnerable_api.js
-└── README.md
-```
+### Cloud Models
 
-## How It Works — Technical Deep Dive
+Supported providers:
 
-### 1. Hybrid Analysis (AST + LLM)
-Unlike pure LLM approaches, this agent first runs deterministic AST analysis:
-- Catches syntax errors, unused imports, bare except clauses **instantly**
-- Computes complexity metrics without LLM cost
-- Results serve as "anchors" that the LLM agents can build on
+- Hugging Face Inference API
+- OpenAI APIs
 
-### 2. Multi-Agent Consensus
-Each agent reviews independently with its specialized prompt. The orchestrator then:
-- **Deduplicates** findings with overlapping line ranges and similar titles
-- **Boosts confidence** when multiple agents flag the same line (consensus)
-- **Calibrates severity** based on the combined view
+This hybrid architecture enables both private on-device inference and scalable cloud-hosted deployments.
 
-### 3. RAG-Enhanced Prompts
-Before each LLM call, relevant patterns are retrieved from a ChromaDB knowledge base:
-- CWE vulnerability patterns matched to the code being reviewed
-- Known bug patterns for the specific language
-- Best practice guidelines relevant to the code patterns detected
+---
 
-### 4. Chain-of-Thought + Structured Output
-Each agent prompt uses:
-- **System role** with domain expertise
-- **Few-shot examples** of real issues with expected JSON output
-- **Chain-of-thought instruction** ("think step-by-step, verify each issue")
-- **JSON mode** for reliable parsing of findings
+## Hybrid Analysis Pipeline
 
-## Demo Walkthrough
+The review process combines deterministic analysis with LLM reasoning.
 
-1. Start the backend server (ensure HF token is set)
-2. Open `samples/python/buggy_ecommerce.py` in VS Code
-3. Press `Ctrl+Shift+R` — watch the agents find ~20+ issues
-4. See inline diagnostics (red/yellow squiggles) on problematic lines
-5. Hover over issues to see descriptions
-6. Click lightbulb → apply Quick Fix suggestions
-7. Open the Dashboard to see quality score, charts, and AI vs Human comparison
-8. Run a Benchmark to see precision/recall/F1 metrics
+### Stage 1: Static Analysis
 
-## Supported Languages
+- AST analysis
+- Complexity metrics
+- Rule-based validation
 
-| Language | AST Analysis | LLM Review |
-|---|---|---|
-| Python | Full (ast module) | Full |
-| JavaScript | — | Full |
-| TypeScript | — | Full |
-| Java | — | Full |
-| Go | — | Full |
-| Rust | — | Full |
-| C/C++ | — | Full |
-| Others | — | Basic |
+### Stage 2: Semantic Retrieval
 
-## License
+- Embedding generation
+- Vector similarity search
+- Knowledge retrieval
 
-MIT
+### Stage 3: Multi-Agent Review
+
+- Specialized reviewer execution
+- Context-aware prompting
+- Structured findings generation
+
+### Stage 4: Consensus Generation
+
+- Result aggregation
+- Deduplication
+- Confidence calibration
+
+---
+
+## C++ Vector Retrieval Engine
+
+To explore retrieval performance for RAG workflows, a lightweight C++ vector retrieval engine was implemented and benchmarked.
+
+### Features
+
+- Cosine similarity implementation
+- Top-k retrieval
+- Vector ranking
+- Latency benchmarking
+
+### Benchmark Results
+
+| Metric | Value |
+|----------|----------|
+| Dataset Size | 5,000 embeddings |
+| Embedding Dimension | 384 |
+| Top-K Retrieval | 5 |
+| Benchmark Runs | 100 |
+| Average Retrieval Latency | 15.1 ms |
+
+### Implementation
+
+The engine benchmarks semantic retrieval workloads similar to those used in RAG-based code review systems and serves as a performance-focused prototype for high-throughput retrieval.
+
+---
+
+## Benchmarking and Evaluation
+
+The platform includes an evaluation framework for measuring review quality.
+
+### Metrics
+
+- Precision
+- Recall
+- F1 Score
+- Severity Accuracy
+- Category Accuracy
+- Review Coverage
+- Time Savings
+
+### Evaluation Process
+
+AI-generated findings are compared against annotated ground-truth datasets to measure review effectiveness and consistency.
+
+---
+
+## VS Code Integration
+
+### Review Capabilities
+
+- Review active file
+- Review selected code blocks
+- Review Git diffs
+- Auto-review on save
+
+### Developer Experience
+
+- Inline diagnostics
+- Quick Fix suggestions
+- Dashboard analytics
+- Quality scoring
+- Review history
+
+---
+
+## Technology Stack
+
+### Languages
+
+- Python
+- C++
+- TypeScript
+- JavaScript
+
+### AI & GenAI
+
+- LangChain
+- LangGraph
+- LlamaIndex
+- AutoGen
+- OpenAI APIs
+- Ollama
+- Hugging Face
+
+### Retrieval
+
+- ChromaDB
+- FAISS
+- Embeddings
+- Semantic Search
+- RAG
+
+### Backend
+
+- FastAPI
+- REST APIs
+
+### Infrastructure
+
+- Docker
+- GitHub Actions
+- CI/CD
+
+### Developer Tooling
+
+- VS Code Extension
+- Diagnostics
+- Quick Fix Actions
+- Dashboard Analytics
+
+---
+
+## Future Enhancements
+
+- Pull request review automation
+- Multi-repository analysis
+- Agent memory and long-term context
+- Distributed retrieval infrastructure
+- Enterprise-scale codebase support
+
+---
+
+## Author
+
+Monik Patel
+
+M.S. Computer Science Candidate  
+The University of Texas at Arlington
+
+Focused on GenAI agents, LLM applications, RAG systems, semantic retrieval, AI-powered developer tooling, and intelligent automation.
